@@ -13,6 +13,13 @@ import {
   CheckCircle2, 
   Menu, 
   X, 
+  FileSpreadsheet,
+  LogOut,
+  LogIn,
+  RefreshCw,
+  ExternalLink,
+  Lock,
+  Database, 
   Clock, 
   Users, 
   TrendingUp, 
@@ -37,6 +44,16 @@ import {
   Award,
   MousePointer
 } from 'lucide-react';
+
+import {
+  signInWithGoogle,
+  logoutGoogle,
+  createLeadsSpreadsheet,
+  appendLeadToSpreadsheet,
+  fetchLeadsFromSpreadsheet,
+  GoogleUser,
+  Lead as GoogleLead
+} from './googleAuth';
 
 // Demo project details for interactive showcase modal
 interface Project {
@@ -203,6 +220,37 @@ export default function App() {
   const [formStatus, setFormStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [formResultMessage, setFormResultMessage] = useState('');
 
+  // Google Sheets Integration State
+  const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
+  const [linkedSheetId, setLinkedSheetId] = useState<string | null>(null);
+  const [linkedSheetUrl, setLinkedSheetUrl] = useState<string | null>(null);
+  const [sheetLeads, setSheetLeads] = useState<GoogleLead[]>([]);
+  const [localUnsyncedLeads, setLocalUnsyncedLeads] = useState<GoogleLead[]>([]);
+  const [isSheetLoading, setIsSheetLoading] = useState<boolean>(false);
+  const [autoSyncToSheet, setAutoSyncToSheet] = useState<boolean>(true);
+
+  // Load Google Sheets configurations on mount
+  useEffect(() => {
+    const savedSheetId = localStorage.getItem('codybrothers_sheet_id');
+    const savedSheetUrl = localStorage.getItem('codybrothers_sheet_url');
+    const savedLocalLeads = localStorage.getItem('codybrothers_local_leads');
+    const savedAutoSync = localStorage.getItem('codybrothers_auto_sync');
+
+    if (savedSheetId) setLinkedSheetId(savedSheetId);
+    if (savedSheetUrl) setLinkedSheetUrl(savedSheetUrl);
+    if (savedLocalLeads) {
+      try {
+        setLocalUnsyncedLeads(JSON.parse(savedLocalLeads));
+      } catch (e) {
+        console.error('Error parsing saved local leads', e);
+      }
+    }
+    if (savedAutoSync !== null) {
+      setAutoSyncToSheet(savedAutoSync === 'true');
+    }
+  }, []);
+
   // Handle Scroll tracking
   useEffect(() => {
     const handleScroll = () => {
@@ -290,60 +338,76 @@ export default function App() {
     }
   };
 
-  // Handle Form Submission with Web3Forms
+  // Handle Form Submission with Web3Forms (Full-Stack Proxy Routing)
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormStatus('submitting');
     setFormResultMessage('');
 
-    // Fetch the Access Key from environment variables (client-side) or fallback placeholder
-    // Web3Forms accepts standard POST request
-    const accessKey = (import.meta as any).env?.VITE_WEB3FORMS_ACCESS_KEY || "YOUR_WEB3FORMS_ACCESS_KEY";
-
-    if (!accessKey || accessKey === "YOUR_WEB3FORMS_ACCESS_KEY") {
-      // Friendly mock success with custom log if user has not set up their real Web3Forms key yet
-      console.warn("CodyBrothers Warning: Web3Forms access key is not set in env variables. Demonstrating simulated premium flow.");
-      
-      setTimeout(() => {
-        setFormStatus('success');
-        setFormResultMessage("Thank you, " + formState.name + "! Your request was submitted successfully. (Demo Mode - Please configure WEB3FORMS_ACCESS_KEY in env for real mail delivery).");
-        // Reset form
-        setFormState({
-          name: '',
-          email: '',
-          phone: '',
-          businessName: '',
-          package: 'Standard - ₹1500',
-          budget: '₹1500 - ₹3000',
-          message: ''
-        });
-      }, 1500);
-      return;
-    }
+    const leadData: GoogleLead = {
+      date: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      name: formState.name,
+      email: formState.email,
+      phone: formState.phone,
+      businessName: formState.businessName,
+      tier: formState.package,
+      budget: formState.budget,
+      message: formState.message
+    };
 
     try {
-      const formData = new FormData();
-      formData.append("access_key", accessKey);
-      formData.append("name", formState.name);
-      formData.append("email", formState.email);
-      formData.append("phone", formState.phone);
-      formData.append("business_name", formState.businessName);
-      formData.append("package", formState.package);
-      formData.append("budget", formState.budget);
-      formData.append("message", formState.message);
-      formData.append("subject", `New CodyBrothers Lead from ${formState.name}`);
-      formData.append("from_name", "CodyBrothers Agency");
-
-      const response = await fetch("https://api.web3forms.com/submit", {
+      const response = await fetch("/api/submit", {
         method: "POST",
-        body: formData
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          name: formState.name,
+          email: formState.email,
+          phone: formState.phone,
+          businessName: formState.businessName,
+          tier: formState.package,
+          budget: formState.budget,
+          message: formState.message
+        })
       });
 
       const data = await response.json();
 
       if (data.success) {
         setFormStatus('success');
-        setFormResultMessage("Your quote request has been transmitted! Arman & Naksh will contact you within 2 hours.");
+        
+        // Handle Google Sheet append if active and authenticated
+        let syncedToSheet = false;
+        if (linkedSheetId && googleToken && autoSyncToSheet) {
+          try {
+            await appendLeadToSpreadsheet(googleToken, linkedSheetId, leadData);
+            syncedToSheet = true;
+            setToastMessage("Lead live-synced to Google Sheets!");
+            // Refresh sheets list
+            try {
+              const freshLeads = await fetchLeadsFromSpreadsheet(googleToken, linkedSheetId);
+              setSheetLeads(freshLeads);
+            } catch (err) {
+              console.error("Failed to refresh sheets list", err);
+            }
+          } catch (sheetErr) {
+            console.error("Sheets sync failed, saving locally:", sheetErr);
+          }
+        }
+
+        // Save to local leads regardless so they are visible in the tracker
+        const updatedLocal = [leadData, ...localUnsyncedLeads];
+        setLocalUnsyncedLeads(updatedLocal);
+        localStorage.setItem('codybrothers_local_leads', JSON.stringify(updatedLocal));
+
+        if (syncedToSheet) {
+          setFormResultMessage(`Thank you, ${leadData.name}! Your inquiry has been submitted and live-synced to Google Sheets. Arman & Naksh will contact you in 2 hours.`);
+        } else {
+          setFormResultMessage(`Thank you, ${leadData.name}! Your inquiry is secured. Arman & Naksh will contact you in 2 hours.`);
+        }
+
+        // Reset fields
         setFormState({
           name: '',
           email: '',
@@ -355,12 +419,17 @@ export default function App() {
         });
       } else {
         setFormStatus('error');
-        setFormResultMessage(data.message || "Something went wrong submitting to Web3Forms. Please check your Access Key.");
+        setFormResultMessage(data.message || "Something went wrong transmitting submission. Please check your Access Key in Settings.");
       }
     } catch (err) {
-      console.error("Web3Forms submission error:", err);
+      console.error("Form submission error:", err);
+      // Even if API fails, let's keep it in local memory so the user doesn't lose data
+      const updatedLocal = [leadData, ...localUnsyncedLeads];
+      setLocalUnsyncedLeads(updatedLocal);
+      localStorage.setItem('codybrothers_local_leads', JSON.stringify(updatedLocal));
+      
       setFormStatus('error');
-      setFormResultMessage("Failed to reach Web3Forms server. Please check your internet connection.");
+      setFormResultMessage("Failed to connect to the backend server. The lead was saved to your local browser cache instead.");
     }
   };
 
@@ -369,6 +438,176 @@ export default function App() {
       ...formState,
       [e.target.name]: e.target.value
     });
+  };
+
+  // --- Google Sheets Sync Handlers ---
+  const handleGoogleSignIn = async () => {
+    setIsSheetLoading(true);
+    try {
+      const res = await signInWithGoogle();
+      if (res) {
+        setGoogleUser(res.user);
+        setGoogleToken(res.token);
+        setToastMessage(`Welcome, ${res.user.displayName || 'Admin'}! Google Sheets linked.`);
+        
+        // Fetch existing spreadsheet data if there is an ID
+        const savedSheetId = localStorage.getItem('codybrothers_sheet_id');
+        if (savedSheetId) {
+          try {
+            const leads = await fetchLeadsFromSpreadsheet(res.token, savedSheetId);
+            setSheetLeads(leads);
+          } catch (fetchErr) {
+            console.error("Failed to load sheet data", fetchErr);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      setToastMessage(`Authentication failed: ${err.message || err}`);
+    } finally {
+      setIsSheetLoading(false);
+    }
+  };
+
+  const handleGoogleSignOut = async () => {
+    setIsSheetLoading(true);
+    try {
+      await logoutGoogle();
+      setGoogleUser(null);
+      setGoogleToken(null);
+      setSheetLeads([]);
+      setToastMessage("Signed out of Google Sheets successfully.");
+    } catch (err: any) {
+      console.error(err);
+      setToastMessage(`Sign out failed: ${err.message || err}`);
+    } finally {
+      setIsSheetLoading(false);
+    }
+  };
+
+  const handleCreateSheet = async () => {
+    if (!googleToken) {
+      setToastMessage("Please sign in with Google first.");
+      return;
+    }
+    setIsSheetLoading(true);
+    try {
+      const result = await createLeadsSpreadsheet(googleToken);
+      setLinkedSheetId(result.spreadsheetId);
+      setLinkedSheetUrl(result.spreadsheetUrl);
+      localStorage.setItem('codybrothers_sheet_id', result.spreadsheetId);
+      localStorage.setItem('codybrothers_sheet_url', result.spreadsheetUrl);
+      setToastMessage("Leads Spreadsheet created successfully!");
+
+      // If there are unsynced local leads, sync them immediately to the new sheet!
+      if (localUnsyncedLeads.length > 0) {
+        setToastMessage("Syncing local cached leads to the new sheet...");
+        let successCount = 0;
+        for (const lead of [...localUnsyncedLeads].reverse()) {
+          try {
+            await appendLeadToSpreadsheet(googleToken, result.spreadsheetId, lead);
+            successCount++;
+          } catch (syncErr) {
+            console.error("Failed to sync lead during creation", syncErr);
+          }
+        }
+        if (successCount > 0) {
+          setLocalUnsyncedLeads([]);
+          localStorage.removeItem('codybrothers_local_leads');
+        }
+      }
+      
+      // Fetch latest list
+      const latestLeads = await fetchLeadsFromSpreadsheet(googleToken, result.spreadsheetId);
+      setSheetLeads(latestLeads);
+    } catch (err: any) {
+      console.error(err);
+      setToastMessage(`Creation failed: ${err.message || err}`);
+    } finally {
+      setIsSheetLoading(false);
+    }
+  };
+
+  const handleRefreshLeads = async () => {
+    if (!googleToken || !linkedSheetId) {
+      setToastMessage("Need active session and linked spreadsheet ID.");
+      return;
+    }
+    setIsSheetLoading(true);
+    try {
+      const leads = await fetchLeadsFromSpreadsheet(googleToken, linkedSheetId);
+      setSheetLeads(leads);
+      setToastMessage("Leads successfully refreshed from Google Sheets!");
+    } catch (err: any) {
+      console.error(err);
+      setToastMessage(`Failed to refresh leads: ${err.message || err}`);
+    } finally {
+      setIsSheetLoading(false);
+    }
+  };
+
+  const handleSyncAllLocal = async () => {
+    if (!googleToken || !linkedSheetId) {
+      setToastMessage("Please sign in and link a sheet first!");
+      return;
+    }
+    if (localUnsyncedLeads.length === 0) {
+      setToastMessage("No local leads to sync.");
+      return;
+    }
+    setIsSheetLoading(true);
+    try {
+      let successCount = 0;
+      for (const lead of [...localUnsyncedLeads].reverse()) {
+        try {
+          await appendLeadToSpreadsheet(googleToken, linkedSheetId, lead);
+          successCount++;
+        } catch (syncErr) {
+          console.error("Sync lead error", syncErr);
+        }
+      }
+      setToastMessage(`Successfully synced ${successCount} leads to Google Sheets!`);
+      // Empty local leads after sync, as they are now securely in the sheet
+      setLocalUnsyncedLeads([]);
+      localStorage.removeItem('codybrothers_local_leads');
+      
+      // Refresh list
+      const latestLeads = await fetchLeadsFromSpreadsheet(googleToken, linkedSheetId);
+      setSheetLeads(latestLeads);
+    } catch (err: any) {
+      console.error(err);
+      setToastMessage(`Sync failed: ${err.message || err}`);
+    } finally {
+      setIsSheetLoading(false);
+    }
+  };
+
+  const handleDisconnectSheet = () => {
+    const confirmUnlink = window.confirm("Are you sure you want to unlink your Google Sheet? This will reset your link status but won't delete the sheet on Google Drive.");
+    if (!confirmUnlink) return;
+
+    setLinkedSheetId(null);
+    setLinkedSheetUrl(null);
+    setSheetLeads([]);
+    localStorage.removeItem('codybrothers_sheet_id');
+    localStorage.removeItem('codybrothers_sheet_url');
+    setToastMessage("Google Sheet disconnected.");
+  };
+
+  const handleClearLocalCache = () => {
+    const confirmClear = window.confirm("Are you sure you want to clear your local submission cache? This will delete all lead records on this browser.");
+    if (!confirmClear) return;
+    
+    setLocalUnsyncedLeads([]);
+    localStorage.removeItem('codybrothers_local_leads');
+    setToastMessage("Local submission cache cleared.");
+  };
+
+  const toggleAutoSync = () => {
+    const newVal = !autoSyncToSheet;
+    setAutoSyncToSheet(newVal);
+    localStorage.setItem('codybrothers_auto_sync', String(newVal));
+    setToastMessage(`Auto-Sync leads is now ${newVal ? 'ENABLED' : 'DISABLED'}`);
   };
 
   const servicesList = [
@@ -584,7 +823,8 @@ export default function App() {
               { id: 'process', label: 'Process' },
               { id: 'about', label: 'About' },
               { id: 'faq', label: 'FAQ' },
-              { id: 'contact', label: 'Contact' }
+              { id: 'contact', label: 'Contact' },
+              { id: 'leads-sync', label: 'Leads Sync' }
             ].map((link) => (
               <button
                 key={link.id}
@@ -638,7 +878,8 @@ export default function App() {
                 { id: 'process', label: 'Process' },
                 { id: 'about', label: 'About' },
                 { id: 'faq', label: 'FAQ' },
-                { id: 'contact', label: 'Contact' }
+                { id: 'contact', label: 'Contact' },
+                { id: 'leads-sync', label: 'Leads Sync' }
               ].map((link) => (
                 <button
                   key={link.id}
@@ -1881,6 +2122,307 @@ export default function App() {
         )}
       </div>
 
+      {/* 16. GOOGLE SHEETS LEADS SYNC DASHBOARD */}
+      <section id="leads-sync" className="py-24 md:py-32 border-t border-white/5 z-10 relative bg-black/40">
+        <div className="max-w-7xl mx-auto px-6 md:px-12">
+          
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <span className="text-xs uppercase tracking-[0.3em] font-mono text-[#00F0FF] bg-[#00F0FF]/5 px-4 py-1.5 rounded-full border border-[#00F0FF]/15">
+              ADMIN CONTROL PANEL
+            </span>
+            <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mt-6 mb-4">
+              Google Sheets Lead Sync
+            </h2>
+            <p className="text-gray-400 text-sm md:text-base leading-relaxed">
+              Integrate Google Sheets to securely capture, route, and visualize prospective lead submissions. Create spreadsheets automatically and live-sync client spec sheets in real time.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+            
+            {/* Left side: Credentials & Sync controls */}
+            <div className="lg:col-span-4 space-y-8">
+              
+              {/* Auth Status Panel */}
+              <div className="p-8 bg-zinc-950/80 border border-white/5 rounded-[2rem] backdrop-blur-md relative overflow-hidden shadow-xl">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-[#00F0FF]/5 rounded-full blur-xl"></div>
+                
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-[#00F0FF]" />
+                  <span>Admin Credentials</span>
+                </h3>
+
+                {!googleUser ? (
+                  <div className="space-y-4">
+                    <p className="text-xs text-gray-400 leading-relaxed">
+                      Link your Google account to authorize secure API transactions with Google Sheets and Google Drive.
+                    </p>
+                    
+                    <button
+                      onClick={handleGoogleSignIn}
+                      disabled={isSheetLoading}
+                      className="w-full flex items-center justify-center gap-3 bg-white text-black hover:bg-[#00F0FF] transition-all duration-300 font-bold py-3.5 px-5 rounded-xl text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSheetLoading ? (
+                        <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                      ) : (
+                        <LogIn className="w-4 h-4 text-black" />
+                      )}
+                      <span>Authorize with Google</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* User Profile Info */}
+                    <div className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/5">
+                      {googleUser.photoURL ? (
+                        <img 
+                          src={googleUser.photoURL} 
+                          alt={googleUser.displayName || 'Google Profile'} 
+                          className="w-12 h-12 rounded-full border border-[#00F0FF]/30"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#00F0FF] to-indigo-600 flex items-center justify-center font-bold text-white text-sm">
+                          {googleUser.displayName?.charAt(0) || 'A'}
+                        </div>
+                      )}
+                      <div className="min-w-0 w-full">
+                        <p className="text-sm font-bold text-white truncate">{googleUser.displayName}</p>
+                        <p className="text-[10px] font-mono text-gray-500 truncate">{googleUser.email}</p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleGoogleSignOut}
+                      disabled={isSheetLoading}
+                      className="w-full flex items-center justify-center gap-3 bg-white/5 hover:bg-red-500/10 hover:text-red-400 border border-white/15 hover:border-red-500/20 transition-all duration-300 font-bold py-3 px-5 rounded-xl text-xs disabled:opacity-50"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Disconnect Session</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Sync Configuration Panel */}
+              <div className="p-8 bg-zinc-950/80 border border-white/5 rounded-[2rem] backdrop-blur-md relative overflow-hidden shadow-xl">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-[#D4AF37]/5 rounded-full blur-xl"></div>
+                
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                  <Database className="w-4 h-4 text-[#D4AF37]" />
+                  <span>Sync Settings</span>
+                </h3>
+
+                <div className="space-y-6">
+                  {/* Auto Sync Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                    <div>
+                      <p className="text-xs font-bold text-white">Live Lead Injection</p>
+                      <p className="text-[10px] text-gray-500">Append leads to Sheet instantly</p>
+                    </div>
+                    <button
+                      onClick={toggleAutoSync}
+                      className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 focus:outline-none ${
+                        autoSyncToSheet ? 'bg-[#00F0FF]' : 'bg-white/10'
+                      }`}
+                    >
+                      <div className={`w-4 h-4 rounded-full bg-black transition-transform duration-300 ${
+                        autoSyncToSheet ? 'translate-x-6' : 'translate-x-0'
+                      }`} />
+                    </button>
+                  </div>
+
+                  {/* Local Cache Status */}
+                  <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-xs font-bold text-white">Local Cache Registry</p>
+                        <p className="text-[10px] text-gray-500">Unsynced offline records</p>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-2.5 py-1 rounded-full border border-[#D4AF37]/20">
+                        {localUnsyncedLeads.length} Leads
+                      </span>
+                    </div>
+
+                    {localUnsyncedLeads.length > 0 && googleUser && linkedSheetId && (
+                      <button
+                        onClick={handleSyncAllLocal}
+                        disabled={isSheetLoading}
+                        className="w-full flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-yellow-500 text-black font-bold py-2 px-4 rounded-xl text-xs transition-all duration-300 shadow-lg disabled:opacity-50"
+                      >
+                        {isSheetLoading ? (
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-3 h-3" />
+                        )}
+                        <span>Sync Unsynced Leads Now</span>
+                      </button>
+                    )}
+
+                    {localUnsyncedLeads.length > 0 && (
+                      <button
+                        onClick={handleClearLocalCache}
+                        className="w-full text-center text-gray-500 hover:text-red-400 text-[10px] transition-colors"
+                      >
+                        Clear Local Cache
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Right side: Sheet Connection and Table view */}
+            <div className="lg:col-span-8 space-y-8">
+              
+              {/* Sheet Linking Panel */}
+              <div className="p-8 md:p-10 bg-zinc-950/80 border border-white/5 rounded-[2rem] backdrop-blur-md relative overflow-hidden shadow-xl">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-[#00F0FF]/5 rounded-full blur-2xl"></div>
+
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                  <div>
+                    <h3 className="text-xl font-extrabold text-white flex items-center gap-2.5">
+                      <FileSpreadsheet className="w-5 h-5 text-[#00F0FF]" />
+                      <span>Target Spreadsheet</span>
+                    </h3>
+                    <p className="text-gray-400 text-xs mt-1">
+                      Configure your linked Google Spreadsheet to receive real-time business opportunities.
+                    </p>
+                  </div>
+
+                  {linkedSheetId && (
+                    <button
+                      onClick={handleDisconnectSheet}
+                      className="px-4 py-2 rounded-xl text-[10px] uppercase font-bold tracking-wider text-red-400 border border-red-500/10 hover:bg-red-500/10 transition-all self-start md:self-auto"
+                    >
+                      Disconnect Sheet
+                    </button>
+                  )}
+                </div>
+
+                {!linkedSheetId ? (
+                  <div className="p-8 bg-white/[0.02] border border-white/5 rounded-2xl text-center space-y-6">
+                    <div className="w-14 h-14 rounded-full bg-[#00F0FF]/5 border border-[#00F0FF]/15 flex items-center justify-center mx-auto text-[#00F0FF]">
+                      <FileSpreadsheet className="w-6 h-6 animate-pulse" />
+                    </div>
+                    
+                    <div className="max-w-md mx-auto">
+                      <h4 className="text-sm font-bold text-white mb-2">No Connected Spreadsheet</h4>
+                      <p className="text-xs text-gray-400 leading-relaxed">
+                        To activate sheets integration, you must create a new Leads spreadsheet inside your authorized Google Drive space.
+                      </p>
+                    </div>
+
+                    <div className="max-w-xs mx-auto pt-2">
+                      <button
+                        onClick={handleCreateSheet}
+                        disabled={!googleUser || isSheetLoading}
+                        className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-[#007AFF] to-[#00F0FF] hover:shadow-[0_0_20px_rgba(0,240,255,0.4)] hover:scale-[1.02] active:scale-[0.98] text-white transition-all duration-300 font-bold py-3.5 px-6 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
+                      >
+                        {isSheetLoading ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4" />
+                        )}
+                        <span>Create Leads Tracker Sheet</span>
+                      </button>
+                      {!googleUser && (
+                        <p className="text-[10px] text-[#D4AF37] font-mono mt-3">
+                          * Please authorize admin credentials on the left first
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Linked Spreadsheet details */}
+                    <div className="p-6 bg-[#09090c] border border-white/5 rounded-2xl space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500">CONNECTED GOOGLE SHEET</p>
+                          <p className="text-sm font-bold text-white truncate mt-1">CodyBrothers Digital Leads Tracker</p>
+                          <p className="text-[10px] font-mono text-[#00F0FF] truncate mt-1 bg-white/5 px-2 py-0.5 rounded border border-white/5 w-fit">
+                            ID: {linkedSheetId}
+                          </p>
+                        </div>
+                        <a
+                          href={linkedSheetUrl || `https://docs.google.com/spreadsheets/d/${linkedSheetId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/10 hover:border-emerald-500/25 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0"
+                        >
+                          <span>Open Live Sheet</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    </div>
+
+                    {/* Leads table/view */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs uppercase font-mono tracking-widest text-[#00F0FF] font-bold">Live Lead Records ({sheetLeads.length})</h4>
+                        
+                        {googleUser && (
+                          <button
+                            onClick={handleRefreshLeads}
+                            disabled={isSheetLoading}
+                            className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-mono text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${isSheetLoading ? 'animate-spin' : ''}`} />
+                            <span>Reload Records</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="border border-white/5 rounded-2xl overflow-hidden bg-black/60 max-h-[350px] overflow-y-auto font-mono text-xs">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-white/5 text-gray-400 border-b border-white/5 text-[10px] uppercase tracking-wider">
+                              <th className="p-3">Client</th>
+                              <th className="p-3">Business</th>
+                              <th className="p-3">Tier</th>
+                              <th className="p-3">Budget</th>
+                              <th className="p-3">Inquiry Date</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/5">
+                            {sheetLeads.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="p-12 text-center text-gray-500">
+                                  No synced lead records found in this sheet. Submit the form above to trigger live-sync stream.
+                                </td>
+                              </tr>
+                            ) : (
+                              sheetLeads.map((lead, idx) => (
+                                <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
+                                  <td className="p-3 min-w-[120px]">
+                                    <p className="font-bold text-white">{lead.name}</p>
+                                    <p className="text-[10px] text-gray-500">{lead.email}</p>
+                                  </td>
+                                  <td className="p-3 text-gray-300">{lead.businessName || '—'}</td>
+                                  <td className="p-3 text-gray-300">{lead.tier}</td>
+                                  <td className="p-3 text-[#D4AF37] font-bold">{lead.budget}</td>
+                                  <td className="p-3 text-gray-500 text-[10px]">{lead.date}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
       {/* 17. FOOTER */}
       <footer className="bg-black border-t border-white/5 py-16 md:py-24 z-10 relative">
         <div className="max-w-7xl mx-auto px-6 md:px-12 grid grid-cols-1 md:grid-cols-12 gap-12 mb-16">
@@ -1908,6 +2450,7 @@ export default function App() {
               <li><button onClick={() => scrollToSection('portfolio')} className="hover:text-white transition-colors">Portfolio</button></li>
               <li><button onClick={() => scrollToSection('about')} className="hover:text-white transition-colors">About</button></li>
               <li><button onClick={() => scrollToSection('contact')} className="hover:text-white transition-colors">Contact</button></li>
+              <li><button onClick={() => scrollToSection('leads-sync')} className="hover:text-white transition-colors">Leads Sync</button></li>
             </ul>
           </div>
 
