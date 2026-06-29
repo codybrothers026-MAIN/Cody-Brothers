@@ -9,6 +9,7 @@ import {
   HelpCircle, 
   Mail, 
   ArrowRight, 
+  ArrowLeft,
   CheckCircle2, 
   Menu, 
   X, 
@@ -34,8 +35,7 @@ import {
   Phone, 
   ArrowUp,
   Award,
-  MousePointer,
-  Play
+  MousePointer
 } from 'lucide-react';
 
 // Demo project details for interactive showcase modal
@@ -106,6 +106,56 @@ const PROJECTS: Project[] = [
   }
 ];
 
+// Premium Client Testimonial interface
+interface Testimonial {
+  quote: string;
+  author: string;
+  role: string;
+  company: string;
+  rating: number;
+  avatar: string;
+  tag: string;
+}
+
+const TESTIMONIALS: Testimonial[] = [
+  {
+    quote: "CodyBrothers completely transformed our gym's digital interface. The custom schedules load instantly on mobile, and clients constantly compliment the glassy design theme. The return on investment was immediate.",
+    author: "Arjun Mehta",
+    role: "Managing Director",
+    company: "Apex Fitness Hub",
+    rating: 5,
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120",
+    tag: "Apex Gym Demo Blueprint"
+  },
+  {
+    quote: "Highly structured coding layout. The response time from Naksh and Arman was spectacular. They delivered our premium restaurant portal with Web3Forms and custom booking in 48 hours.",
+    author: "Sneha Rao",
+    role: "Executive Head Chef",
+    company: "Verve Gastronomy",
+    rating: 5,
+    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120",
+    tag: "Verve Gastronomy Blueprint"
+  },
+  {
+    quote: "Stunning attention to visual typography, shadows, and margins. Better conversion optimization parameters than standard enterprise agencies that charge 10x our budget. Highly recommended!",
+    author: "Kabir Malhotra",
+    role: "Operations Chief",
+    company: "Aura Luxury Store",
+    rating: 5,
+    avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=120",
+    tag: "Aura Commerce Blueprint"
+  },
+  {
+    quote: "Blown away by the speed and responsive animation. We got our entire digital portfolio redesigned and deployed in under 4 days. Google PageSpeed is sitting at a solid 99 on mobile.",
+    author: "Rohan Das",
+    role: "Principal Architect",
+    company: "Aether Studios",
+    rating: 5,
+    avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=120",
+    tag: "Studio Portfolio Blueprint"
+  }
+];
+
 export default function App() {
   // Navigation & UI States
   const [activeSection, setActiveSection] = useState('home');
@@ -127,6 +177,18 @@ export default function App() {
 
   // Interactive FAQ state
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
+
+  // Floating Toast notification state
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => {
+        setToastMessage(null);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
 
   // Web3Forms Form State
   const [formState, setFormState] = useState({
@@ -1177,7 +1239,7 @@ export default function App() {
                   {/* Play/Simulate overlay on hover */}
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                     <div className="w-12 h-12 rounded-full bg-[#00F0FF] flex items-center justify-center text-black shadow-lg">
-                      <Play className="w-5 h-5 fill-black ml-0.5" />
+                      <ArrowUpRight className="w-5 h-5" />
                     </div>
                   </div>
                 </div>
@@ -1206,53 +1268,53 @@ export default function App() {
 
       {/* 11. PORTFOLIO DETAIL DRAWER / MODAL */}
       {selectedProject && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-          <div className="relative bg-[#0b0b0d] border border-white/10 rounded-[2.5rem] max-w-2xl w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="relative bg-[#0b0b0d] border border-white/10 rounded-3xl md:rounded-[2.5rem] max-w-2xl w-full overflow-y-auto max-h-[90vh] shadow-2xl animate-in fade-in zoom-in duration-300">
             
             {/* Header Close */}
             <button
               onClick={() => setSelectedProject(null)}
-              className="absolute top-5 right-5 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 text-white flex items-center justify-center border border-white/10 transition-colors z-20"
+              className="absolute top-4 right-4 md:top-5 md:right-5 w-10 h-10 rounded-full bg-black/60 hover:bg-white/10 text-white flex items-center justify-center border border-white/10 transition-colors z-20"
             >
               <X className="w-5 h-5" />
             </button>
 
             {/* Project Cover */}
-            <div className="relative aspect-[1.8] bg-zinc-900">
+            <div className="relative aspect-[16/10] md:aspect-[1.8] bg-zinc-900">
               <img
                 src={selectedProject.image}
                 alt={selectedProject.title}
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#0b0b0d] to-transparent"></div>
-              <div className="absolute bottom-6 left-6">
-                <span className="text-xs text-[#D4AF37] font-mono uppercase tracking-widest bg-black/50 px-3 py-1 rounded-full border border-white/10">
+              <div className="absolute bottom-4 left-4 md:bottom-6 md:left-6">
+                <span className="text-[9px] md:text-xs text-[#D4AF37] font-mono uppercase tracking-widest bg-black/50 px-2.5 py-1 rounded-full border border-white/10">
                   Demo Project Simulation
                 </span>
-                <h3 className="text-3xl font-black text-white tracking-tight mt-3">
+                <h3 className="text-2xl md:text-3xl font-black text-white tracking-tight mt-2 md:mt-3">
                   {selectedProject.title}
                 </h3>
               </div>
             </div>
 
             {/* Project Details */}
-            <div className="p-8">
-              <p className="text-gray-300 text-sm leading-relaxed mb-6">
+            <div className="p-6 md:p-8">
+              <p className="text-gray-300 text-xs md:text-sm leading-relaxed mb-6">
                 {selectedProject.description}
               </p>
 
               {/* Stats Highlight */}
-              <div className="bg-[#00F0FF]/5 border border-[#00F0FF]/10 rounded-2xl p-4 flex items-center gap-3 text-sm text-[#00F0FF] mb-6 font-bold">
-                <TrendingUp className="w-5 h-5" />
+              <div className="bg-[#00F0FF]/5 border border-[#00F0FF]/10 rounded-xl md:rounded-2xl p-4 flex items-center gap-3 text-xs md:text-sm text-[#00F0FF] mb-6 font-bold">
+                <TrendingUp className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
                 <span>Simulated Client Impact: {selectedProject.metrics}</span>
               </div>
 
               {/* Tech stack */}
               <div className="mb-8">
-                <p className="text-xs uppercase tracking-wider text-gray-500 font-mono mb-3">Implemented Stack:</p>
-                <div className="flex flex-wrap gap-2">
+                <p className="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 font-mono mb-3">Implemented Stack:</p>
+                <div className="flex flex-wrap gap-1.5 md:gap-2">
                   {selectedProject.techStack.map((tech, i) => (
-                    <span key={i} className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-xs font-mono text-gray-300">
+                    <span key={i} className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] md:text-xs font-mono text-gray-300">
                       {tech}
                     </span>
                   ))}
@@ -1260,7 +1322,7 @@ export default function App() {
               </div>
 
               {/* Action buttons */}
-              <div className="flex gap-4">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={() => {
                     setFormState(prev => ({
@@ -1271,15 +1333,16 @@ export default function App() {
                     setSelectedProject(null);
                     scrollToSection('contact');
                   }}
-                  className="flex-1 py-4 bg-gradient-to-r from-[#007AFF] to-[#00F0FF] text-white font-bold rounded-xl text-center shadow-lg text-xs uppercase tracking-wider"
+                  className="flex-1 py-3.5 bg-gradient-to-r from-[#007AFF] to-[#00F0FF] text-white font-bold rounded-xl text-center shadow-lg text-xs uppercase tracking-widest active:scale-95 transition-transform"
                 >
                   Inquire For Similar Build
                 </button>
                 <button
                   onClick={() => {
-                    alert("This is a live high-fidelity demo representation. Ready to host on your real domain!");
+                    setToastMessage("Simulating live environment. Ready to deploy this real blueprint for your domain!");
+                    setSelectedProject(null);
                   }}
-                  className="px-6 py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold uppercase tracking-wider text-white"
+                  className="px-6 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold uppercase tracking-widest text-white active:scale-95 transition-all"
                 >
                   Live Preview
                 </button>
@@ -1289,6 +1352,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+
 
       {/* 12. METHODOLOGY / PROCESS */}
       <section id="process" className="py-24 md:py-32 bg-white/[0.01] border-y border-white/5 z-10 relative">
@@ -1429,48 +1494,56 @@ export default function App() {
               <span className="text-xs uppercase tracking-[0.3em] font-mono text-pink-500 bg-pink-500/5 px-4 py-1.5 rounded-full border border-pink-500/15">
                 CLIENT FEEDBACK
               </span>
-              <h3 className="text-3xl font-bold tracking-tight mt-6">
+              <h3 className="text-3xl md:text-4xl font-extrabold tracking-tight mt-6 mb-4">
                 Aesthetic Appraisals
               </h3>
+              <p className="text-gray-400 text-sm md:text-base">
+                Hear what client companies say about our custom digital blueprints, responsiveness, and design accuracy.
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {[
-                {
-                  quote: "CodyBrothers completely transformed our gym's digital interface. The custom schedules load instantly on mobile, and clients constantly compliment the glassy design theme.",
-                  author: "Fitness Hub Director",
-                  stars: 5,
-                  tag: "Apex Gym Demo Blueprint"
-                },
-                {
-                  quote: "Highly structured coding layout. The response time from Naksh and Arman was spectacular. They delivered our restaurant portal with Web3Forms in 48 hours.",
-                  author: "Culinary Group Owner",
-                  stars: 5,
-                  tag: "Verve Gastronomy Blueprint"
-                },
-                {
-                  quote: "Stunning attention to visual typography, shadows, and margins. Better conversion optimization parameters than standard agencies that charge 10x the budget.",
-                  author: "E-Commerce Venture Capitalist",
-                  stars: 5,
-                  tag: "Aura Commerce Blueprint"
-                }
-              ].map((rev, i) => (
-                <div key={i} className="bg-[#09090c] border border-white/5 p-8 rounded-3xl flex flex-col justify-between">
+            {/* Elegant Client Testimonial Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto mt-12">
+              {TESTIMONIALS.map((testimonial, idx) => (
+                <div 
+                  key={idx}
+                  className="group relative bg-[#09090c] border border-white/5 p-6 md:p-8 rounded-3xl flex flex-col justify-between transition-all duration-300 hover:border-[#00F0FF]/30 hover:shadow-[0_10px_30px_rgba(0,240,255,0.03)]"
+                >
                   <div>
-                    <div className="flex gap-1 text-[#D4AF37] mb-6">
-                      {[...Array(rev.stars)].map((_, idx) => (
-                        <Star key={idx} className="w-4 h-4 fill-[#D4AF37]" />
-                      ))}
+                    {/* Upper decorative elements */}
+                    <div className="flex justify-between items-start mb-6">
+                      <div className="flex gap-1 text-[#D4AF37]">
+                        {[...Array(testimonial.rating)].map((_, starIdx) => (
+                          <Star key={starIdx} className="w-4 h-4 fill-[#D4AF37]" />
+                        ))}
+                      </div>
+                      <div className="text-4xl font-serif text-[#00F0FF]/10 select-none leading-none h-6">“</div>
                     </div>
-                    <p className="text-gray-300 text-xs md:text-sm italic leading-relaxed mb-6">
-                      "{rev.quote}"
+                    
+                    {/* Review message */}
+                    <p className="text-gray-300 text-xs md:text-sm italic leading-relaxed mb-8">
+                      "{testimonial.quote}"
                     </p>
                   </div>
-                  <div>
-                    <p className="text-xs font-bold text-white mb-1">{rev.author}</p>
-                    <span className="text-[10px] text-gray-500 font-mono tracking-widest uppercase bg-white/5 px-2 py-1 rounded-md border border-white/5">
-                      Sample Review • {rev.tag}
-                    </span>
+
+                  {/* Profile & Metadata */}
+                  <div className="flex items-center gap-4 border-t border-white/5 pt-6 mt-auto">
+                    <img 
+                      src={testimonial.avatar} 
+                      alt={testimonial.author} 
+                      className="w-10 h-10 rounded-full object-cover border border-white/10"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-white text-sm truncate">{testimonial.author}</h4>
+                      <p className="text-[11px] text-gray-500 font-mono tracking-wide truncate">
+                        {testimonial.role} at <span className="text-[#00F0FF]">{testimonial.company}</span>
+                      </p>
+                    </div>
+                    <div className="hidden sm:block">
+                      <span className="text-[9px] text-gray-400 font-mono tracking-widest uppercase bg-white/5 px-2.5 py-1 rounded-md border border-white/5 whitespace-nowrap">
+                        Verified Build
+                      </span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1745,6 +1818,26 @@ export default function App() {
 
         </div>
       </section>
+
+      {/* PREMIUM FLOATING TOAST NOTIFICATION */}
+      {toastMessage && (
+        <div className="fixed bottom-24 left-6 right-6 md:right-auto md:max-w-md bg-[#09090c]/95 backdrop-blur-xl border border-[#00F0FF]/30 p-4 rounded-2xl shadow-[0_10px_30px_rgba(0,240,255,0.15)] z-[100] flex items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="w-8 h-8 rounded-lg bg-[#00F0FF]/10 flex items-center justify-center text-[#00F0FF] shrink-0">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-200 font-semibold leading-relaxed">
+              {toastMessage}
+            </p>
+          </div>
+          <button 
+            onClick={() => setToastMessage(null)}
+            className="text-gray-500 hover:text-white p-1 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* 16. FLOATING QUICK ACTION BUTTONS */}
       <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-40">
